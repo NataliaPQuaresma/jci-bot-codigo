@@ -1,0 +1,17 @@
+2026/05/11-22:11:32.633 91c0 Reusing MANIFEST C:\Users\natal\OneDrive\Documentos\jci-bot-codigo\src\.wwebjs_auth\session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2026/05/11-22:11:32.635 91c0 Recovering log #83
+2026/05/11-22:11:32.730 91c0 Reusing old log C:\Users\natal\OneDrive\Documentos\jci-bot-codigo\src\.wwebjs_auth\session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/000083.log 
+2026/05/11-22:11:35.931 92a4 Level-0 table #90: started
+2026/05/11-22:11:35.992 92a4 Level-0 table #90: 1211545 bytes OK
+2026/05/11-22:11:35.996 92a4 Delete type=0 #83
+2026/05/11-22:11:36.119 92a4 Compacting 1@1 + 4@2 files
+2026/05/11-22:11:36.304 92a4 Generated table #91@1: 53915 keys, 2244150 bytes
+2026/05/11-22:11:36.621 92a4 Generated table #92@1: 29107 keys, 2176563 bytes
+2026/05/11-22:11:36.715 92a4 Generated table #93@1: 49020 keys, 1050126 bytes
+2026/05/11-22:11:36.715 92a4 Compacted 1@1 + 4@2 files => 5470839 bytes
+2026/05/11-22:11:36.716 92a4 compacted to: files[ 0 0 3 0 0 0 0 ]
+2026/05/11-22:11:36.717 92a4 Delete type=2 #82
+2026/05/11-22:11:36.717 92a4 Delete type=2 #85
+2026/05/11-22:11:36.717 92a4 Delete type=2 #86
+2026/05/11-22:11:36.717 92a4 Delete type=2 #87
+2026/05/11-22:11:36.717 92a4 Delete type=2 #90
