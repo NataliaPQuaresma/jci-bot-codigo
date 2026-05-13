@@ -48,5 +48,22 @@ async function buscarHistorico(telefone) {
     }
     return data || [];
 }
-module.exports = { buscarEmpresas, salvarHistorico, buscarHistorico };
+
+async function buscarPatrocinadores(termoBusca, cidade) {
+    if (!termoBusca) return [];
+
+    const { data, error } = await supabase 
+    .from('patrocinadores')
+    .select('*')
+    .ilike('cidade', `%${cidade || 'Sarandi'}%`)
+    .or(`nome.ilike.%${termoBusca}%, categoria.ilike.%${termoBusca}%`)
+    .order('estrelas', { ascending: false });
+
+if (error) {
+    console.log('Erro ao buscar patrocinadores:', error);
+    return [];
+}
+return data || [];
+}
+module.exports = { buscarEmpresas, salvarHistorico, buscarHistorico, buscarPatrocinadores };
 

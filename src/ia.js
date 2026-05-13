@@ -11,7 +11,8 @@ const axios = require('axios');
 const {
     buscarEmpresas,
     buscarHistorico,
-    salvarHistorico
+    salvarHistorico,
+    buscarPatrocinadores
 } = require('./banco');
 
 const { buscarOSM, obterCidadePorCoordenadas } = require('./osm');
@@ -176,7 +177,16 @@ Horário atual: ${hora}.
 Responda APENAS com a lista abaixo, sem introdução, sem despedida, sem texto extra.
 Use ✅ ABERTO se o status for ABERTO e ❌ FECHADO se for FECHADO
 Para cada estabelecimento use uma linha com: [emoji status] Nome | 📞 Telefone | 📍 Rua
+- Se o estabelecimento for patrocinador (campo patrocinador = true), mostre as estrelas antes do nome conforme o campo estrelas: 1=⭐, 2=⭐⭐, 3=⭐⭐⭐, 4=⭐⭐⭐⭐, 5=⭐⭐⭐⭐⭐
 Antes da lista escreva UMA linha curta e animada sobre os resultados, com emoji.
+- Se o estabelecimennto for patrocinador, destaque assim:
+━━━━━━━━━━━━━━━
+⭐⭐⭐ Nome (estrelas conforme o campo estrelas)
+📞 Telefone | 📍 Endereço
+━━━━━━━━━━━━━━━
+- Os patrocinadores aparecem SEMPRE primeiro antes dos outros resultados
+- Depois dos patrocinadores mostre os demais normalmente com 🟢/🔴
+
 
 
 Estabelecimentos:
@@ -365,11 +375,14 @@ Agora é só me dizer o que você precisa em ${cidade} que eu busco na hora! �
 
     await salvarPesquisa(telefone, termoBusca, cidade);
 
+    const patrocinadores = await buscarPatrocinadores(termoBusca, cidade);
+    console.log('⭐ PATROCINADORES:', patrocinadores.length);
+
     const empresas = await buscarEmpresas(termoBusca, cidade);
 
     console.log('🏪 EMPRESAS:', empresas);
 
-    if (!empresas || empresas.length === 0) {
+    if ((!empresas || empresas.length === 0) && patrocinadores.length ===0) {
         console.log('⚠️ Nada no Supabase, buscando no Google Places...');
 
         const osm = await buscarOSM(termoBusca, cidade, localizacao);
@@ -397,8 +410,16 @@ Agora é só me dizer o que você precisa em ${cidade} que eu busco na hora! �
         return respostaOSM;
     }
 
+    const todosResultados = [...patrocinadores.map(p => ({
+        ...p,
+        aberto: true,
+        endereco: 'Sarandi',
+        telefone: p.telefone || '',
+        patrocinador: true
+    })), ...agradecimentos(empresas || [])];
+
     const respostaRAG = await responderComRAG(
-        mensagem, historico, empresas, nomeUsuario, cidade
+        mensagem, historico, todosResultados, nomeUsuario, cidade
     );
 
     if (respostaRAG) {
