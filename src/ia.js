@@ -15,7 +15,7 @@ const {
     buscarPatrocinadores
 } = require('./banco');
 
-const { buscarOSM, obterCidadePorCoordenadas } = require('./osm');
+const { buscarOSM, obterCidadePorCoordenadas, buscarDadosPatrocinador } = require('./osm');
 
 const {
     buscarUsuario,
@@ -28,6 +28,8 @@ const {
 const estadoOnboarding = {};
 const localizacaoUsuario = {};
 const buscaPendente = {};
+const ultimaBusca = {};
+const ultimosResultados = {};
 
 
 async function extrairIntencao(mensagem, historico = []) {
@@ -121,7 +123,7 @@ COMO VOCÊ AJUDA:
 - IGNORE o histórico para decidir a saudação — use APENAS o horário atual para isso
 - Se for entre 00h-12h: bom dia | 12h-18h: boa tarde | 18h-23h: boa noite
 - NUNCA mencione o horário ou o relógio na resposta — apenas use o horário para saudar corretamente
-
+- NUNCA use asteriscos, underlines ou qualquer formatação markdown na resposta
 SAUDAÇÕES:
 - Use o horário atual pra saudar corretamente (bom dia, boa tarde, boa noite) ` }]
                 },
@@ -155,11 +157,13 @@ SAUDAÇÕES:
 }
 async function responderComRAG(mensagem, historico, empresas, nomeUsuario, cidadeUsuario) {
 const contextoEmpresas = empresas.map(e => {
-    const status = e.aberto ? 'ABERTO' : 'FECHADO';
-    const rua = e.endereco.split(',')[0];
+    const status = e.aberto ? '✅ ABERTO' : '❌ FECHADO';
+    const rua = e.endereco ? e.endereco.split(',')[0] : 'Sarandi';
     const horario = e.horario ? `| ${e.horario}` : '';
-    return `${e.nome} | ${status} | ${e.telefone} | ${rua} ${horario}`;
-}).join('\n');
+    const estrelas = e.estrelas ? '⭐'.repeat(e.estrelas) : '';
+    const patrocinador = e.patrocinador ? 'PATROCINADOR' : '';
+    return `${patrocinador} ${estrelas} ${e.nome} | ${status} | ${e.telefone || 'não informado'} | ${rua} ${horario}`;
+    }).join('\n');
 
     const hora = new Date().toLocaleTimeString('pt-BR', {
         timeZone: 'America/Sao_Paulo',
@@ -172,22 +176,33 @@ const contextoEmpresas = empresas.map(e => {
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
             {
                 systemInstruction: {
-                    parts: [{ text: `Você é o Jayci, assistente da JCI Sarandi.
-Horário atual: ${hora}.
-Responda APENAS com a lista abaixo, sem introdução, sem despedida, sem texto extra.
-Use ✅ ABERTO se o status for ABERTO e ❌ FECHADO se for FECHADO
-Para cada estabelecimento use uma linha com: [emoji status] Nome | 📞 Telefone | 📍 Rua
-- Se o estabelecimento for patrocinador (campo patrocinador = true), mostre as estrelas antes do nome conforme o campo estrelas: 1=⭐, 2=⭐⭐, 3=⭐⭐⭐, 4=⭐⭐⭐⭐, 5=⭐⭐⭐⭐⭐
-Antes da lista escreva UMA linha curta e animada sobre os resultados, com emoji.
-- Se o estabelecimennto for patrocinador, destaque assim:
-━━━━━━━━━━━━━━━
-⭐⭐⭐ Nome (estrelas conforme o campo estrelas)
-📞 Telefone | 📍 Endereço
-━━━━━━━━━━━━━━━
-- Os patrocinadores aparecem SEMPRE primeiro antes dos outros resultados
-- Depois dos patrocinadores mostre os demais normalmente com 🟢/🔴
+                    parts: [{ text: `Você é o Jayci, assistente animado da JCI Sarandi! 🎉
+Horário atual: ${hora} (horário de Brasília).
 
+Comece com UMA frase curta e animada sobre os resultados.
+- NUNCA mencione outros produtos ou categorias que não foram buscados pelo usuário
 
+Para PATROCINADORES (campo patrocinador = true), mostre assim:
+[estrelas] Nome 💎
+📞 Telefone
+📍 Endereço completo
+🕐 [aberto/fechado com horário se disponível]
+
+Depois: ➖➖➖ Outras opções ➖➖➖
+
+Para os DEMAIS:
+✅ ou ❌ Nome — 📞 Telefone — 📍 Endereço
+
+No final, uma frase animada de encerramento tipo "Se precisar de mais alguma coisa é só chamar! 🚀"
+
+REGRAS:
+- NUNCA use asteriscos ou markdown
+- Patrocinadores SEMPRE primeiro
+- Use o status ABERTO/FECHADO do campo, não invente
+- NUNCA invente dados
+- Endereço completo nos patrocinadores
+- Se os resultados forem os mesmos de uma busca anterior, diga de forma animada que essas são todas as opções disponíveis no momento em Sarandi, com uma mensagem criativa e engraçada
+- Use EXATAMENTE o status do campo ABERTO/FECHADO, nunca interprete o horário por conta própria
 
 Estabelecimentos:
 ${contextoEmpresas}` }]
@@ -204,7 +219,7 @@ ${contextoEmpresas}` }]
                 ],
                 generationConfig: {
                     temperature: 0.5,
-                    maxOutputTokens: 2000
+                    maxOutputTokens: 4096
                 }
             },
             {
@@ -356,15 +371,24 @@ Agora é só me dizer o que você precisa em ${cidade} que eu busco na hora! �
 
     const intent = await extrairIntencao(mensagem, historico);
 
-    if (!intent?.termoBusca) {
+    const pedindoMais = ['mais', 'tem mais', 'outras opções', 'mais opções', 'outros'].some(p => texto.includes(p));
+    if (pedindoMais && ultimaBusca[telefone]) {
+        if (ultimosResultados[telefone]) {
+            const respostaMais = 'Essas são todas as opções que encontrei por aqui! 😊 Se precisar de outra categoria é só me dizer! 🔍';
+            await salvarHistorico(telefone, respostaMais, 'bot');
+            return respostaMais;
+        }
+        intent.termoBusca = ultimaBusca[telefone];
+    } else if (!intent?.termoBusca) {
         const respostaIA = await conversarComIA(
-            mensagem, historico, nomeUsuario, cidadeUsuario, ultimasPesquisas
-        );
+        mensagem, historico, nomeUsuario, cidadeUsuario, ultimasPesquisas
+    );
         await salvarHistorico(telefone, respostaIA, 'bot');
         return respostaIA;
-    }
+}
 
     const termoBusca = intent.termoBusca;
+    ultimaBusca[telefone] = termoBusca;
 
     const localizacao = localizacaoUsuario[telefone]
         || (usuario?.lat ? { lat: usuario.lat, lon: usuario.lon } : null);
@@ -378,11 +402,24 @@ Agora é só me dizer o que você precisa em ${cidade} que eu busco na hora! �
     const patrocinadores = await buscarPatrocinadores(termoBusca, cidade);
     console.log('⭐ PATROCINADORES:', patrocinadores.length);
 
+    // busca endereco e telefone dos patrocinadores que nao tem cadastrado 
+
+    for (const p of patrocinadores) {
+        const dados = await buscarDadosPatrocinador(p.nome);
+        console.log('📍 DADOS PATROCINADOR:', p.nome, dados);
+        if (dados) {
+            p.endereco = p.endereco || dados.endereco;
+            p.telefone = p.telefone || dados.telefone;
+            p.aberto = dados.aberto;
+            p.horario = dados.horario;
+        }
+    }
+
     const empresas = await buscarEmpresas(termoBusca, cidade);
 
     console.log('🏪 EMPRESAS:', empresas);
 
-    if ((!empresas || empresas.length === 0) && patrocinadores.length ===0) {
+    if (!empresas || empresas.length === 0){
         console.log('⚠️ Nada no Supabase, buscando no Google Places...');
 
         const osm = await buscarOSM(termoBusca, cidade, localizacao);
@@ -393,8 +430,18 @@ Agora é só me dizer o que você precisa em ${cidade} que eu busco na hora! �
             return `❌ Não encontrei nada de "${termoBusca}" em ${cidade}.`;
         }
 
+        const nomesPatrocinadores = patrocinadores.map(p => p.nome.toLowerCase());
+        const osmFiltrado = osm.filter(o => !nomesPatrocinadores.some(n => o.nome.toLowerCase().includes(n) || n.includes(o.nome.toLowerCase())));
+
+    const todosOSM = [...patrocinadores.map(p => ({
+        ...p,
+        aberto: true,
+        patrocinador: true 
+    })), ...osmFiltrado];
+    ultimosResultados[telefone] = todosOSM.map(e => e.nome).join(',');
+        
         const respostaRAG = await responderComRAG(
-            mensagem, historico, osm, nomeUsuario, cidade
+            mensagem, [], todosOSM, nomeUsuario, cidade
         );
 
         if (respostaRAG) {
@@ -413,13 +460,12 @@ Agora é só me dizer o que você precisa em ${cidade} que eu busco na hora! �
     const todosResultados = [...patrocinadores.map(p => ({
         ...p,
         aberto: true,
-        endereco: 'Sarandi',
-        telefone: p.telefone || '',
         patrocinador: true
-    })), ...agradecimentos(empresas || [])];
+    })), ...(empresas || [])];
+    ultimosResultados[telefone] = todosResultados.map(e => e.nome).join(',');
 
     const respostaRAG = await responderComRAG(
-        mensagem, historico, todosResultados, nomeUsuario, cidade
+        termoBusca, [], todosResultados, nomeUsuario, cidade
     );
 
     if (respostaRAG) {

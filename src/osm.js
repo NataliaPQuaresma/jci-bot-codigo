@@ -297,4 +297,36 @@ async function buscarOSM(query, cidade, localizacao = null) {
     }
 }
 
-module.exports = { buscarOSM, obterCidadePorCoordenadas };
+async function buscarDadosPatrocinador(nome) {
+    try {
+        const resposta = await axios.post(
+            'https://places.googleapis.com/v1/places:searchText',
+            {
+                textQuery: `${nome} Sarandi RS Brasil`,
+                maxResultCount: 1,
+                languageCode: 'pt-BR'
+            },
+            {
+                headers: {
+                    'Context-Type': 'application/json',
+                    'X-Goog-Api-Key': process.env.GOOGLE_PLACES_KEY,
+                    'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.shortFormattedAddress,places.currentOpeningHours'                  
+                }
+            }
+        );
+        const lugar = resposta.data?.places?.[0];
+        console.log('🔍 RAW PATROCINADOR:', JSON.stringify(lugar));
+        if (!lugar) return null;
+
+        return {
+            endereco: lugar.formattedAddress || '',
+            telefone: lugar.nationalPhoneNumber || '',
+            aberto: lugar.currentOpeningHours?.openNow === true,
+            horario: lugar.currentOpeningHours?.weekdayDescriptions?.[new Date ().getDay() - 1] || ''
+        };
+    } catch (err) {
+        console.log('Erro buscarDadosPatrocinador:', err.message);
+        return null;
+    }
+}
+module.exports = { buscarOSM, obterCidadePorCoordenadas, buscarDadosPatrocinador };
