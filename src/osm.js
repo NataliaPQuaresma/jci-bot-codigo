@@ -5,7 +5,7 @@ const axios = require('axios');
 // CATEGORIAS 
 const CATEGORIAS = {
     mercado: {
-        sinonimos: ['mercado', 'supermercado', 'mercadinho', 'mercearia', 'minimercado', 'market'],
+        sinonimos: ['mercado', 'supermercado', 'mercadinho', 'mercearia', 'minimercado'],
         tipo: 'supermarket'
     },
     farmacia: {
@@ -277,19 +277,75 @@ async function buscarOSM(query, cidade, localizacao = null) {
                 return !palavrasAnimal.some(palavra => nome.includes(palavra));
             });
 
-            const listaFinal = operacionais;
+            let listaFinal = operacionais;
 
-    return listaFinal.map(p => {
-    const resultado = {
-        nome: p.displayName?.text || 'Sem nome',
-        endereco: p.formattedAddress || cidadeNormalizada,
-        telefone: p.nationalPhoneNumber || '',
-        aberto: p.currentOpeningHours?.openNow === true,
-        horario: p.currentOpeningHours?.weekdayDescriptions?.[new Date().getDay() - 1] || ''
-    };
-    console.log('🏨 LUGAR:', resultado.nome, '| ABERTO:', resultado.aberto, '| HORARIO:', resultado.horario);
-    return resultado;
-});
+            // se for banco, busca cooperativas tambem 
+            if (tipo === 'bank') {
+                const respostaCoops = await axios.post(
+                    'https://places.googleapis.com/v1/places:searchText',
+                    {
+                        textQuery: `cooperativa de credito ${cidadeNormalizada} RS`,
+                        maxResultCount: 5,
+                        languageCode: 'pt-BR',
+                        locationBias: {
+                            circle: {
+                                center: { latitude: coords.lat, longitude: coords.lon },
+                                radius: 8000
+                            }
+                        }
+                    },
+                    {
+                        headers: {
+                            'Context-Type': 'application/json',
+                            'X-Goog-Api-Key': process.env.GOOGLE_PLACES_KEY,
+                            'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.businessStatus,places.currentOpeningHours'
+                        }
+                    }
+                );
+
+                const coops = (respostaCoops.data?.places || [])
+                .filter(p => p.businessStatus === 'OPERATIONAL')
+                .map( p => ({
+                    nome: p.displayName?.text || 'Sem nome',
+                    endereco: p.formattedAddress || cidadeNormalizada,
+                    telefone: p.nationalPhoneNumber || '',
+                    aberto: p.currentOpeningHours?.openNow === true,
+                    horario: (p.currentOpeningHours?.weekdayDescriptions?.[new Date().getDay() - 1] || '').replace(/^[^:]+:\s*/, '')
+                }));
+
+                // remove duplicatas pleo nome 
+
+                const nomesExistentes = listaFinal.map(e => 
+                    (e.nome || e.displayName?.text || '').toLowerCase()
+                );
+                const coopsFiltradas = coops.filter(c => {
+                    if (!c.nome) return false;
+                    const nomeC = c.nome.toLowerCase();
+                    return !nomesExistentes.some(n => n.includes(nomeC) || nomeC.includes(n));
+                });
+                
+
+                listaFinal = [...listaFinal, ...coopsFiltradas];
+                console.log('🏦 COOPERATIVAS encontradas:', coopsFiltradas.map(c => c.nome));
+            }
+
+            const listaMapeada = listaFinal.map(p => {
+                    // se já foi mapeado (cooperativas), retorna direto
+                if (p.nome) return p;
+    
+                // se ainda é objeto bruto do Google Places, mapeia
+            const resultado = {
+                nome: p.displayName?.text || 'Sem nome',
+                endereco: p.formattedAddress || cidadeNormalizada,
+                telefone: p.nationalPhoneNumber || '',
+                aberto: p.currentOpeningHours?.openNow === true,
+                horario: (p.currentOpeningHours?.weekdayDescriptions?.[new Date().getDay() - 1] || '').replace(/^[^:]+:\s*/, '')
+            };
+            console.log('🏨 LUGAR:', resultado.nome, '| ABERTO:', resultado.aberto, '| HORARIO:', resultado.horario);
+            return resultado;
+        }).filter(p => p.nome && p.nome !== 'Sem nome');
+
+return listaMapeada;
 
     } catch (err) {
         console.log("Erro Google Places:", err.message);
@@ -322,7 +378,7 @@ async function buscarDadosPatrocinador(nome) {
             endereco: lugar.formattedAddress || '',
             telefone: lugar.nationalPhoneNumber || '',
             aberto: lugar.currentOpeningHours?.openNow === true,
-            horario: lugar.currentOpeningHours?.weekdayDescriptions?.[new Date ().getDay() - 1] || ''
+            horario: (lugar.currentOpeningHours?.weekdayDescriptions?.[new Date().getDay() - 1] || '').replace(/^[^:]+:\s*/, '')
         };
     } catch (err) {
         console.log('Erro buscarDadosPatrocinador:', err.message);

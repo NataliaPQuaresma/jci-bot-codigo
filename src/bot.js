@@ -51,7 +51,7 @@ client.on('message', async (msg) => {
         // proteção contra resposta vazia
         if (!resposta || resposta.trim() === '') return;
 
-    const LIMITE = 1000;
+    const LIMITE = 4000;
     if (resposta.length <= LIMITE) {
         await client.sendMessage(msg.from, resposta);
     } else {
