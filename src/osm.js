@@ -1,7 +1,6 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 const axios = require('axios');
 
-
 // CATEGORIAS 
 const CATEGORIAS = {
     mercado: {
@@ -41,7 +40,7 @@ const CATEGORIAS = {
         tipo: 'school'
     },
     roupas: {
-        sinonimos: ['roupa', 'roupas', 'loja de roupa', 'loja de roupas', 'vestuario', 'vestuário', 'moda'],
+        sinonimos: ['roupa', 'roupas', 'loja de roupa', 'loja de roupas', 'vestuario', 'vestuário', 'moda', 'roupa de festa', 'roupa social', 'festa'],
         tipo: 'clothing_store'
     },
     barbearia: {
@@ -95,24 +94,16 @@ const CATEGORIAS = {
     dentista: {
         sinonimos: ['dentista', 'odontologia', 'odonto', 'dente'],
         tipo: 'dentist'
-    },
+    }
 };
 
-
-// COORDENADAS DAS CIDADES — adicione novas aqui
-
 const COORDS_CIDADES = {
-    'sarandi':      { lat: -27.9408, lon: -52.9228 },
-    'passo fundo':  { lat: -28.2620, lon: -52.4083 },
-    'carazinho':    { lat: -28.2833, lon: -52.7833 },
-    'marau':        { lat: -28.4500, lon: -52.2167 },
+    'sarandi': { lat: -27.9408, lon: -52.9228 },
 };
 
 const palavrasAnimal = ['pet', 'animal', 'veterinár', 'veterinar', 'agropecuária', 'agropecuaria'];
 
-
 // CONVERTE COORDENADAS EM NOME DE CIDADE
-
 async function obterCidadePorCoordenadas(lat, lon) {
     try {
         const resposta = await axios.get(
@@ -150,29 +141,28 @@ async function obterCidadePorCoordenadas(lat, lon) {
 }
 
 // DETECTA CATEGORIA DA BUSCA
-
 function detectarCategoria(query) {
     const queryLower = (query || '').toLowerCase().trim();
     for (const [, dados] of Object.entries(CATEGORIAS)) {
-        if (dados.sinonimos.some(sin => queryLower.includes(sin))) {
+        if (dados.sinonimos.some(sin => {
+            const escaped = sin.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&');
+            const regex = new RegExp(`(^|\\s)${escaped}(\\s|$)`, 'i');
+            return regex.test(queryLower);
+        })) {
             return dados.tipo;
         }
     }
-    return null;
+    return null; // Caso não encontre nenhuma categoria mapeada
 }
-
 // NORMALIZA NOME DE CIDADE
-
 function normalizarCidade(cidade) {
     return (cidade || '')
-        .replace(/,?\s*RS\s*$/i, '')
+        .replace(/[-\s,]+RS\s*$/i, '') // Remove " - RS", ", RS" ou apenas " RS" no final
         .trim()
         .toLowerCase();
 }
 
-
 // BUSCA NO GOOGLE PLACES
-
 async function buscarOSM(query, cidade, localizacao = null) {
     try {
         console.log('🔎 buscarOSM chamado:', query, cidade, localizacao);
@@ -189,11 +179,17 @@ async function buscarOSM(query, cidade, localizacao = null) {
             console.log('📍 Usando coordenadas da cidade:', cidadeNormalizada, coords);
         }
 
+        // Resposta estruturada caso esteja fora da cobertura geográfica mapeada
         if (!coords) {
-            return { erro: `Não encontrei a cidade *${cidade}*. Por enquanto atendo: ${Object.keys(COORDS_CIDADES).join(', ')}.` };
+            return { 
+                foraDeCobertura: true, 
+                cidadeTentada: cidade,
+                erro: `Não encontrei a cidade *${cidade}*. Por enquanto atendo: ${Object.keys(COORDS_CIDADES).join(', ')}.` 
+            };
         }
 
         const tipo = detectarCategoria(query);
+        console.log('🏷️ TIPO DETECTADO:', tipo, '| QUERY:', query);
 
         if (!tipo) {
             const respostaTexto = await axios.post(
@@ -277,35 +273,35 @@ async function buscarOSM(query, cidade, localizacao = null) {
                 return !palavrasAnimal.some(palavra => nome.includes(palavra));
             });
 
-            let listaFinal = operacionais;
+        let listaFinal = operacionais;
 
-            // se for banco, busca cooperativas tambem 
-            if (tipo === 'bank') {
-                const respostaCoops = await axios.post(
-                    'https://places.googleapis.com/v1/places:searchText',
-                    {
-                        textQuery: `cooperativa de credito ${cidadeNormalizada} RS`,
-                        maxResultCount: 5,
-                        languageCode: 'pt-BR',
-                        locationBias: {
-                            circle: {
-                                center: { latitude: coords.lat, longitude: coords.lon },
-                                radius: 8000
-                            }
-                        }
-                    },
-                    {
-                        headers: {
-                            'Context-Type': 'application/json',
-                            'X-Goog-Api-Key': process.env.GOOGLE_PLACES_KEY,
-                            'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.businessStatus,places.currentOpeningHours'
+        // Se for banco, busca cooperativas também 
+        if (tipo === 'bank') {
+            const respostaCoops = await axios.post(
+                'https://places.googleapis.com/v1/places:searchText',
+                {
+                    textQuery: `cooperativa de credito ${cidadeNormalizada} RS`,
+                    maxResultCount: 5,
+                    languageCode: 'pt-BR',
+                    locationBias: {
+                        circle: {
+                            center: { latitude: coords.lat, longitude: coords.lon },
+                            radius: 8000
                         }
                     }
-                );
+                },
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Goog-Api-Key': process.env.GOOGLE_PLACES_KEY,
+                        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.businessStatus,places.currentOpeningHours'
+                    }
+                }
+            );
 
-                const coops = (respostaCoops.data?.places || [])
+            const coops = (respostaCoops.data?.places || [])
                 .filter(p => p.businessStatus === 'OPERATIONAL')
-                .map( p => ({
+                .map(p => ({
                     nome: p.displayName?.text || 'Sem nome',
                     endereco: p.formattedAddress || cidadeNormalizada,
                     telefone: p.nationalPhoneNumber || '',
@@ -313,27 +309,25 @@ async function buscarOSM(query, cidade, localizacao = null) {
                     horario: (p.currentOpeningHours?.weekdayDescriptions?.[new Date().getDay() - 1] || '').replace(/^[^:]+:\s*/, '')
                 }));
 
-                // remove duplicatas pleo nome 
+            // Remove duplicatas pelo nome 
+            const nomesExistentes = listaFinal.map(e => 
+                (e.nome || e.displayName?.text || '').toLowerCase()
+            );
+            const coopsFiltradas = coops.filter(c => {
+                if (!c.nome) return false;
+                const nomeC = c.nome.toLowerCase();
+                return !nomesExistentes.some(n => n.includes(nomeC) || nomeC.includes(n));
+            });
 
-                const nomesExistentes = listaFinal.map(e => 
-                    (e.nome || e.displayName?.text || '').toLowerCase()
-                );
-                const coopsFiltradas = coops.filter(c => {
-                    if (!c.nome) return false;
-                    const nomeC = c.nome.toLowerCase();
-                    return !nomesExistentes.some(n => n.includes(nomeC) || nomeC.includes(n));
-                });
-                
+            listaFinal = [...listaFinal, ...coopsFiltradas];
+            console.log('🏦 COOPERATIVAS encontradas:', coopsFiltradas.map(c => c.nome));
+        }
 
-                listaFinal = [...listaFinal, ...coopsFiltradas];
-                console.log('🏦 COOPERATIVAS encontradas:', coopsFiltradas.map(c => c.nome));
-            }
+        const listaMapeada = listaFinal.map(p => {
+            // Se já foi mapeado (cooperativas), retorna direto
+            if (p.nome) return p;
 
-            const listaMapeada = listaFinal.map(p => {
-                    // se já foi mapeado (cooperativas), retorna direto
-                if (p.nome) return p;
-    
-                // se ainda é objeto bruto do Google Places, mapeia
+            // Se ainda é objeto bruto do Google Places, mapeia
             const resultado = {
                 nome: p.displayName?.text || 'Sem nome',
                 endereco: p.formattedAddress || cidadeNormalizada,
@@ -345,7 +339,26 @@ async function buscarOSM(query, cidade, localizacao = null) {
             return resultado;
         }).filter(p => p.nome && p.nome !== 'Sem nome');
 
-return listaMapeada;
+        // Filtra resultados irrelevantes por tipo
+        const filtrosIrrelevantes = {
+            clothing_store: ['hospital', 'clinica', 'clínica', 'instituto', 'escola', 'colégio', 'colegio', 'farmacia', 'farmácia', 'banco', 'posto'],
+            pharmacy: ['veterinár', 'veterinar', 'agropecuária', 'agropecuaria', 'pet', 'animal'],
+            supermarket: ['hospital', 'clinica', 'clínica', 'farmacia', 'farmácia'],
+            gym: ['fisioterapia', 'clinica', 'clínica'],
+            restaurant: ['hospital', 'clinica', 'clínica', 'farmacia', 'farmácia', 'escola'],
+            bakery: ['hospital', 'clinica', 'clínica'],
+            pet_store: ['hospital', 'clinica', 'clínica', 'farmacia', 'farmácia'],
+        };
+
+        const termosFiltro = filtrosIrrelevantes[tipo] || [];
+        if (termosFiltro.length > 0) {
+            return listaMapeada.filter(p => {
+                const nome = p.nome.toLowerCase();
+                return !termosFiltro.some(i => nome.includes(i));
+            });
+        }
+
+        return listaMapeada;
 
     } catch (err) {
         console.log("Erro Google Places:", err.message);
@@ -364,7 +377,7 @@ async function buscarDadosPatrocinador(nome) {
             },
             {
                 headers: {
-                    'Context-Type': 'application/json',
+                    'Content-Type': 'application/json',
                     'X-Goog-Api-Key': process.env.GOOGLE_PLACES_KEY,
                     'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.shortFormattedAddress,places.currentOpeningHours'                  
                 }
@@ -385,4 +398,5 @@ async function buscarDadosPatrocinador(nome) {
         return null;
     }
 }
+
 module.exports = { buscarOSM, obterCidadePorCoordenadas, buscarDadosPatrocinador };

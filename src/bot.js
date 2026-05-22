@@ -49,8 +49,16 @@ client.on('message', async (msg) => {
         }
 
         // proteção contra resposta vazia
-        if (!resposta || resposta.trim() === '') return;
+        if (!resposta || (typeof resposta === 'string' && resposta.trim() === '') || (Array.isArray(resposta) && resposta.length === 0)) return;
 
+if (Array.isArray(resposta)) {
+    for (const parte of resposta) {
+        if (parte && parte.trim()) {
+            await client.sendMessage(msg.from, parte.trim());
+            await new Promise(r => setTimeout(r, 800));
+        }
+    }
+} else {
     const LIMITE = 4000;
     if (resposta.length <= LIMITE) {
         await client.sendMessage(msg.from, resposta);
@@ -63,11 +71,12 @@ client.on('message', async (msg) => {
                 await new Promise(r => setTimeout(r, 800));
                 parte = linha;
             } else {
-            parte += '\n' + linha;
+                parte += '\n' + linha;
             }
         }
         if (parte.trim()) await client.sendMessage(msg.from, parte.trim());
     }
+}
 
     } catch (err) {
         console.error('❌ Erro ao processar mensagem:', err);
