@@ -1,7 +1,7 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 const axios = require('axios');
 
-// CATEGORIAS 
+// CATEGORIAS
 const CATEGORIAS = {
     mercado: {
         sinonimos: ['mercado', 'supermercado', 'mercadinho', 'mercearia', 'minimercado'],
@@ -10,6 +10,10 @@ const CATEGORIAS = {
     farmacia: {
         sinonimos: ['farmácia', 'farmacia', 'drogaria', 'remédio', 'remedio'],
         tipo: 'pharmacy'
+    },
+    postosaude: {
+        sinonimos: ['posto de saude', 'posto de saúde', 'unidade de saude', 'unidade de saúde', 'ubs', 'usf', 'unidade basica'],
+        tipo: 'hospital'
     },
     posto: {
         sinonimos: ['posto', 'combustível', 'combustivel', 'gasolina', 'etanol'],
@@ -43,6 +47,10 @@ const CATEGORIAS = {
         sinonimos: ['roupa', 'roupas', 'loja de roupa', 'loja de roupas', 'vestuario', 'vestuário', 'moda', 'roupa de festa', 'roupa social', 'festa'],
         tipo: 'clothing_store'
     },
+    calcados: {
+        sinonimos: ['calçado', 'calcado', 'sapato', 'tênis', 'tenis', 'sapataria', 'bota', 'sandalia', 'sandália', 'sapatilha'],
+        tipo: 'shoe_store'
+    },
     barbearia: {
         sinonimos: ['barbearia', 'barbeiro'],
         tipo: 'barber_shop'
@@ -68,11 +76,11 @@ const CATEGORIAS = {
         tipo: 'pet_store'
     },
     lojaInfantil: {
-        sinonimos: ['loja de roupa infantil', 'roupa de crianca', 'roupa de criança', 'roupa infantil'],
+        sinonimos: ['loja de roupa infantil', 'roupa de crianca', 'roupa de criança', 'roupa infantil', 'loja infantil'],
         tipo: 'clothing_store'
     },
     bar: {
-        sinonimos: ['bar', 'cerveja', 'bebida', 'boteco', 'barzinho'],
+        sinonimos: ['bar', 'cerveja', 'bebida', 'boteco', 'barzinho', 'encher a cara', 'tomar uma'],
         tipo: 'bar'
     },
     sorvete: {
@@ -94,6 +102,10 @@ const CATEGORIAS = {
     dentista: {
         sinonimos: ['dentista', 'odontologia', 'odonto', 'dente'],
         tipo: 'dentist'
+    },
+    concessionaria: {
+        sinonimos: ['carro antigo', 'landau', 'concessionaria', 'concessionária', 'comprar carro', 'automovel', 'automóvel'],
+        tipo: 'car_dealer'
     }
 };
 
@@ -102,6 +114,19 @@ const COORDS_CIDADES = {
 };
 
 const palavrasAnimal = ['pet', 'animal', 'veterinár', 'veterinar', 'agropecuária', 'agropecuaria'];
+
+// REMOVE ACENTOS PARA COMPARAÇÃO
+function removerAcentos(str) {
+    return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+// Força o fuso horário de Brasília e ajusta a array do Google (Seg=0 ... Dom=6)
+function obterIndiceDiaGoogle() {
+    const dataLocal = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+    const diaSemanaJS = dataLocal.getDay(); // Dom = 0, Seg = 1, ... Sab = 6
+    const mapeamentoGoogle = [6, 0, 1, 2, 3, 4, 5]; 
+    return mapeamentoGoogle[diaSemanaJS];
+}
 
 // CONVERTE COORDENADAS EM NOME DE CIDADE
 async function obterCidadePorCoordenadas(lat, lon) {
@@ -140,24 +165,28 @@ async function obterCidadePorCoordenadas(lat, lon) {
     }
 }
 
-// DETECTA CATEGORIA DA BUSCA
+// DETECTA CATEGORIA DA BUSCA (com suporte a acentos e erros de digitação)
 function detectarCategoria(query) {
-    const queryLower = (query || '').toLowerCase().trim();
+    const queryNorm = removerAcentos(query || '');
     for (const [, dados] of Object.entries(CATEGORIAS)) {
         if (dados.sinonimos.some(sin => {
-            const escaped = sin.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&');
+            const sinNorm = removerAcentos(sin);
+            const escaped = sinNorm.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&');
             const regex = new RegExp(`(^|\\s)${escaped}(\\s|$)`, 'i');
-            return regex.test(queryLower);
+            return regex.test(queryNorm);
         })) {
             return dados.tipo;
         }
     }
-    return null; // Caso não encontre nenhuma categoria mapeada
+    return null;
 }
+
 // NORMALIZA NOME DE CIDADE
 function normalizarCidade(cidade) {
     return (cidade || '')
-        .replace(/[-\s,]+RS\s*$/i, '') // Remove " - RS", ", RS" ou apenas " RS" no final
+        .replace(/\s*-\s*RS\s*$/i, '')   // remove " - RS"
+        .replace(/,\s*RS\s*$/i, '')        // remove ", RS"
+        .replace(/\s+RS\s*$/i, '')         // remove " RS" solto no final
         .trim()
         .toLowerCase();
 }
@@ -179,18 +208,56 @@ async function buscarOSM(query, cidade, localizacao = null) {
             console.log('📍 Usando coordenadas da cidade:', cidadeNormalizada, coords);
         }
 
-        // Resposta estruturada caso esteja fora da cobertura geográfica mapeada
         if (!coords) {
-            return { 
-                foraDeCobertura: true, 
+            return {
+                foraDeCobertura: true,
                 cidadeTentada: cidade,
-                erro: `Não encontrei a cidade *${cidade}*. Por enquanto atendo: ${Object.keys(COORDS_CIDADES).join(', ')}.` 
+                erro: `Não encontrei a cidade *${cidade}*. Por enquanto atendo: ${Object.keys(COORDS_CIDADES).join(', ')}.`
             };
         }
 
         const tipo = detectarCategoria(query);
         console.log('🏷️ TIPO DETECTADO:', tipo, '| QUERY:', query);
 
+        // Busca específica para roupa infantil
+        
+if (query.includes('infantil') || query.includes('crianca') || query.includes('criança')) {
+    const respostaInfantil = await axios.post(
+        'https://places.googleapis.com/v1/places:searchText',
+        {
+            textQuery: `loja roupa infantil ${cidade} RS Brasil`,
+            maxResultCount: 10,
+            languageCode: 'pt-BR',
+            locationBias: {
+                circle: {
+                    center: { latitude: coords.lat, longitude: coords.lon },
+                    radius: 5000
+                }
+            }
+        },
+        {
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Goog-Api-Key': process.env.GOOGLE_PLACES_KEY,
+                'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.businessStatus,places.currentOpeningHours'
+            }
+        }
+    );
+
+    const diaIndex = obterIndiceDiaGoogle();
+    const lugaresInfantil = respostaInfantil.data?.places || [];
+    console.log('👶 Lugares infantil encontrados:', lugaresInfantil.length);
+
+    return lugaresInfantil
+        .filter(p => p.businessStatus === 'OPERATIONAL')
+        .map(p => ({
+            nome: p.displayName?.text || 'Sem nome',
+            endereco: p.formattedAddress || cidade,
+            telefone: p.nationalPhoneNumber || '',
+            aberto: p.currentOpeningHours?.openNow === true,
+            horario: (p.currentOpeningHours?.weekdayDescriptions?.[diaIndex] || '').replace(/^[^:]+:\s*/, '')
+        }));
+}
         if (!tipo) {
             const respostaTexto = await axios.post(
                 'https://places.googleapis.com/v1/places:searchText',
@@ -224,6 +291,8 @@ async function buscarOSM(query, cidade, localizacao = null) {
                 return { erro: `Não encontrei nenhum(a) *${query}* em ${cidade} 😕` };
             }
 
+            const diaIndex = obterIndiceDiaGoogle();
+
             return lugaresTexto
                 .filter(p => p.businessStatus === 'OPERATIONAL')
                 .map(p => ({
@@ -231,7 +300,7 @@ async function buscarOSM(query, cidade, localizacao = null) {
                     endereco: p.formattedAddress || cidade,
                     telefone: p.nationalPhoneNumber || '',
                     aberto: p.currentOpeningHours?.openNow === true,
-                    horario: p.currentOpeningHours?.weekdayDescriptions?.[new Date().getDay() - 1] || ''
+                    horario: (p.currentOpeningHours?.weekdayDescriptions?.[diaIndex] || '').replace(/^[^:]+:\s*/, '')
                 }));
         }
 
@@ -275,7 +344,6 @@ async function buscarOSM(query, cidade, localizacao = null) {
 
         let listaFinal = operacionais;
 
-        // Se for banco, busca cooperativas também 
         if (tipo === 'bank') {
             const respostaCoops = await axios.post(
                 'https://places.googleapis.com/v1/places:searchText',
@@ -299,6 +367,8 @@ async function buscarOSM(query, cidade, localizacao = null) {
                 }
             );
 
+            const diaIndexCoop = obterIndiceDiaGoogle();
+
             const coops = (respostaCoops.data?.places || [])
                 .filter(p => p.businessStatus === 'OPERATIONAL')
                 .map(p => ({
@@ -306,11 +376,10 @@ async function buscarOSM(query, cidade, localizacao = null) {
                     endereco: p.formattedAddress || cidadeNormalizada,
                     telefone: p.nationalPhoneNumber || '',
                     aberto: p.currentOpeningHours?.openNow === true,
-                    horario: (p.currentOpeningHours?.weekdayDescriptions?.[new Date().getDay() - 1] || '').replace(/^[^:]+:\s*/, '')
+                    horario: (p.currentOpeningHours?.weekdayDescriptions?.[diaIndexCoop] || '').replace(/^[^:]+:\s*/, '')
                 }));
 
-            // Remove duplicatas pelo nome 
-            const nomesExistentes = listaFinal.map(e => 
+            const nomesExistentes = listaFinal.map(e =>
                 (e.nome || e.displayName?.text || '').toLowerCase()
             );
             const coopsFiltradas = coops.filter(c => {
@@ -324,22 +393,21 @@ async function buscarOSM(query, cidade, localizacao = null) {
         }
 
         const listaMapeada = listaFinal.map(p => {
-            // Se já foi mapeado (cooperativas), retorna direto
             if (p.nome) return p;
 
-            // Se ainda é objeto bruto do Google Places, mapeia
+            const diaIndex = obterIndiceDiaGoogle();
+
             const resultado = {
                 nome: p.displayName?.text || 'Sem nome',
                 endereco: p.formattedAddress || cidadeNormalizada,
                 telefone: p.nationalPhoneNumber || '',
                 aberto: p.currentOpeningHours?.openNow === true,
-                horario: (p.currentOpeningHours?.weekdayDescriptions?.[new Date().getDay() - 1] || '').replace(/^[^:]+:\s*/, '')
+                horario: (p.currentOpeningHours?.weekdayDescriptions?.[diaIndex] || '').replace(/^[^:]+:\s*/, '')
             };
             console.log('🏨 LUGAR:', resultado.nome, '| ABERTO:', resultado.aberto, '| HORARIO:', resultado.horario);
             return resultado;
         }).filter(p => p.nome && p.nome !== 'Sem nome');
 
-        // Filtra resultados irrelevantes por tipo
         const filtrosIrrelevantes = {
             clothing_store: ['hospital', 'clinica', 'clínica', 'instituto', 'escola', 'colégio', 'colegio', 'farmacia', 'farmácia', 'banco', 'posto'],
             pharmacy: ['veterinár', 'veterinar', 'agropecuária', 'agropecuaria', 'pet', 'animal'],
@@ -379,7 +447,7 @@ async function buscarDadosPatrocinador(nome) {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Goog-Api-Key': process.env.GOOGLE_PLACES_KEY,
-                    'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.shortFormattedAddress,places.currentOpeningHours'                  
+                    'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.shortFormattedAddress,places.currentOpeningHours'
                 }
             }
         );
@@ -387,11 +455,13 @@ async function buscarDadosPatrocinador(nome) {
         console.log('🔍 RAW PATROCINADOR:', JSON.stringify(lugar));
         if (!lugar) return null;
 
+        const diaIndex = obterIndiceDiaGoogle();
+
         return {
             endereco: lugar.formattedAddress || '',
             telefone: lugar.nationalPhoneNumber || '',
             aberto: lugar.currentOpeningHours?.openNow === true,
-            horario: (lugar.currentOpeningHours?.weekdayDescriptions?.[new Date().getDay() - 1] || '').replace(/^[^:]+:\s*/, '')
+            horario: (lugar.currentOpeningHours?.weekdayDescriptions?.[diaIndex] || '').replace(/^[^:]+:\s*/, '')
         };
     } catch (err) {
         console.log('Erro buscarDadosPatrocinador:', err.message);

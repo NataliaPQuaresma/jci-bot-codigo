@@ -2,26 +2,33 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') }
 const { createClient } = require('@supabase/supabase-js');
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-async function buscarEmpresas(categoria, cidade) {
+// Limpa acentos para facilitar a busca
+function removerAcentos(str) {
+    return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
 
+async function buscarEmpresas(categoria, cidade) {
     if (!categoria) return [];
 
     const cidadeFinal = cidade || 'Sarandi';
+    
+    // Remove pontuação que quebra o banco
+    const categoriaLimpa = categoria.replace(/[,()]/g, ''); 
+    const categoriaNorm = removerAcentos(categoriaLimpa);
 
     const { data, error } = await supabase
         .from('Empresas')
         .select('*')
         .ilike('cidade', `%${cidadeFinal}%`)
-        .or(`nome.ilike.%${categoria}%, categoria.ilike.%${categoria}%`);
+        .or(`nome.ilike.%${categoriaLimpa}%,categoria.ilike.%${categoriaLimpa}%,nome.ilike.%${categoriaNorm}%,categoria.ilike.%${categoriaNorm}%`);
 
-if (error) {
-    console.log('Erro ao buscar empresas: ', error);
-    return [];
-}
+    if (error) {
+        console.log('Erro ao buscar empresas:', error);
+        return [];
+    }
 
-console.log("🔎 RESULTADO:", data);
-
-return data;
+    console.log("🔎 RESULTADO:", data);
+    return data;
 }
 
 async function salvarHistorico(telefone, mensagem, papel) {
@@ -39,31 +46,47 @@ async function buscarHistorico(telefone) {
         .from('historico')
         .select('*')
         .eq('telefone', telefone)
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false }) // Pega os mais recentes
         .limit(10);
 
     if (error) {
         console.log('Erro ao buscar histórico:', error);
         return [];
     }
-    return data || [];
+    
+    // Deixa na ordem certa de leitura (antigas para novas)
+    return data ? data.reverse() : []; 
 }
 
 async function buscarPatrocinadores(termoBusca, cidade) {
     if (!termoBusca) return [];
 
-    const { data, error } = await supabase 
-    .from('patrocinadores')
-    .select('*')
-    .ilike('cidade', `%${cidade || 'Sarandi'}%`)
-    .or(`nome.ilike.%${termoBusca}%, categoria.ilike.%${termoBusca}%`)
-    .order('estrelas', { ascending: false });
+    // Tira a sigla do estado se a IA mandar junto
+    const cidadeLimpa = (cidade || 'Sarandi')
+        .replace(/\s*-\s*RS\s*$/i, '')
+        .replace(/,\s*RS\s*$/i, '')
+        .trim();
 
-if (error) {
-    console.log('Erro ao buscar patrocinadores:', error);
-    return [];
+    // Remove pontuação do termo de busca
+    const termoLimpo = termoBusca.replace(/[,()]/g, '');
+    const termoNorm = removerAcentos(termoLimpo);
+
+    const queryOr = `nome.ilike.%${termoLimpo}%,categoria.ilike.%${termoLimpo}%,nome.ilike.%${termoNorm}%,categoria.ilike.%${termoNorm}%`;
+
+    const { data, error } = await supabase
+        .from('patrocinadores')
+        .select('*')
+        .ilike('cidade', `%${cidadeLimpa}%`)
+        .or(queryOr)
+        .order('estrelas', { ascending: false });
+
+    if (error) {
+        console.log('Erro ao buscar patrocinadores:', error);
+        return [];
+    }
+    
+    console.log(`⭐ PATROCINADORES ENCONTRADOS NO BANCO: ${data ? data.length : 0}`);
+    return data || [];
 }
-return data || [];
-}
+
 module.exports = { buscarEmpresas, salvarHistorico, buscarHistorico, buscarPatrocinadores };
-

@@ -14,6 +14,7 @@ const {
     buscarHistorico,
     salvarHistorico,
     buscarPatrocinadores
+    
 } = require('./banco');
 
 const { buscarOSM, obterCidadePorCoordenadas, buscarDadosPatrocinador } = require('./osm');
@@ -24,6 +25,7 @@ const {
     salvarLocalizacao,
     salvarPesquisa,
     buscarUltimasPesquisas
+    
 } = require('./usuarios');
 
 const estadoOnboarding = {};
@@ -31,6 +33,7 @@ const localizacaoUsuario = {};
 const buscaPendente = {};
 const ultimaBusca = {};
 const ultimosResultados = {};
+
 
 async function extrairIntencao(mensagem, historico = []) {
     try {
@@ -41,36 +44,45 @@ async function extrairIntencao(mensagem, historico = []) {
                     parts: [{ text: `Você é um extrator de intenção para um chatbot de busca local.
 Sua função é identificar O QUE o usuário está procurando e transformar em categorias limpas.
 
-REGRAS CRÍTICAS DE SEGURANÇA E CONTEXTO:
-1. DROGAS E SUBSTÂNCIAS ILÍCITAS: Se o usuário pedir substâncias entorpecentes ilegais (ex: maconha, cocaína, sintéticas) ou manifestar comportamento ligado a abuso de substâncias, retorne obrigatoriamente: {"termos": ["ajuda_saude"], "cidade": null}. 
-⚠️ ATENÇÃO CRÍTICA: Termos como "farmácia", "drogaria", "remédio", "medicamento" ou "comprar aspirina" são buscas comerciais LEGÍTIMAS. Para eles, ignore esta regra e retorne o termo normal ["farmacia"].
-2. CONTEÚDO ADULTO: Se o usuário pedir acompanhantes, pornografia ou conteúdo adulto, retorne obrigatoriamente: {"termos": ["bloqueado_adulto"], "cidade": null}
-3. FLUXOS DE CADASTRO/CONFIRMAÇÃO: Se a mensagem do usuário for apenas "pular", "sim", "não", "s", "n", "quero", "confirmar" (respostas a perguntas do fluxo), retorne obrigatoriamente o array vazio: {"termos": [], "cidade": null}
-4. ESPECIFICIDADE DE COMPRA: Se o usuário quer comprar maquinário ou veículos (ex: "trator pra comprar", "comprar carro"), classifique como ["concessionaria"] ou ["comercio"] e NUNCA como oficina, mecânica ou conserto.
-5. MÚLTIPLOS PEDIDOS: Se o usuário pedir mais de uma coisa na mesma frase, separe em termos diferentes no array.
-6. PIADAS/SARCASMO/PERGUNTAS IMPOSSÍVEIS: Se o usuário fizer uma piada ou pedir algo contraditório (ex: barbearia para careca, óptica para cego, geladeira para esquimó, churrascaria vegana), mude a propriedade "piada" para true e crie uma resposta sarcástica na propriedade "respostaPiada". Além disso, se o termo real NÃO fizer sentido ser listado (como procurar carne em restaurante vegano), deixe o array "termos" VAZIO: {"termos": [], ...}.
-7. VESTUÁRIO E ACESSÓRIOS ESPECÍFICOS: Se o usuário buscar por itens específicos de moda como "chapéu", "bota", "calçado", "salto alto", "roupa de festa", generalize para termos comerciais que o mapa encontre, como ["loja de roupas"], ["calcados"] ou ["boutique"].
-8. FILTRO DE CIDADE RÍGIDO: A cidade padrão é SEMPRE Sarandi - RS (Rio Grande do Sul). Se o usuário disser apenas "Sarandi", force a propriedade "cidade" para "Sarandi - RS" para evitar que o mapa busque em Sarandi - PR.
-9. Humor e Sarcasmo: Seja muito bem-humorado. Ria da piada do usuário e ofereça o comércio real logo em seguida de forma amigável.
-10. Indicações: Se o usuário usar palavras como "me indica", "qual você recomenda?", "qual o melhor?", adicione uma propriedade no JSON de retorno chamada "pedeIndicao": true.
+REGRA ABSOLUTA: Retorne SEMPRE e SOMENTE JSON puro em uma linha. NUNCA retorne texto livre, mesmo para perguntas fora do escopo, filosofia, piadas ou conversas. Sem JSON = erro crítico.
 
-Responda APENAS COM JSON válido, sem explicações:
-{
-"termos": ["termo1"],
-"cidade": "cidade ou null",
-"pedeIndicao": true ou false,
-"piada": true ou false,
-"respostaPiada": "Sua resposta engraçada aqui ou null"
-}
+REGRAS DE SEGURANÇA E CONTEXTO:
+1. DROGAS E SUBSTÂNCIAS ILÍCITAS: Se o usuário pedir substâncias ilegais (cocaína, maconha, crack, heroína), retorne: {"termos":["ajuda_saude"],"cidade":null}
+⚠️ EXCEÇÃO CRÍTICA: "farmácia", "drogaria", "remédio", "medicamento" são buscas LEGÍTIMAS → retorne ["farmacia"]
+⚠️ EXCEÇÃO CRÍTICA 2: "encher a cara", "tomar uma", "cerveja", "bebida", "beber", "boteco", "bar" são buscas por BAR → retorne ["bar"]. NUNCA classifique pedido de bebida alcoólica como "ajuda_saude".
+2. CONTEÚDO ADULTO: Se pedir acompanhantes, pornografia ou serviços sexuais pagos, retorne: {"termos":["bloqueado_adulto"],"cidade":null}
+3. FLUXOS/CONFIRMAÇÕES: Se a mensagem for apenas "pular", "sim", "não", "s", "n", "quero", "confirmar", retorne: {"termos":[],"cidade":null,"pedeIndicao":false,"piada":false,"respostaPiada":null}
+4. ESPECIFICIDADE DE COMPRA: "trator pra comprar", "comprar carro" → ["concessionaria"]. Nunca ["mecanica"].
+5. MÚLTIPLOS PEDIDOS: Separe em termos diferentes no array.
+6. PIADAS: Se o usuário pedir algo impossível ou contraditório, defina "piada":true e crie "respostaPiada". Se o termo real não fizer sentido, deixe "termos":[].
+⚠️ REGRA ANTI-HIPERFOCO: Analise CADA mensagem de forma COMPLETAMENTE INDEPENDENTE. NUNCA use nomes, termos ou assuntos de mensagens anteriores para criar piadas em mensagens novas. Se o usuário falou de "Landau" antes, isso NÃO deve aparecer em respostas sobre outros assuntos.
+7. VESTUÁRIO: "chapéu", "bota", "calçado", "roupa de festa" → ["loja de roupas"] ou ["calcados"]
+8. CIDADE PADRÃO: Sarandi - RS. Se o usuário disser apenas "Sarandi", force "cidade":"Sarandi - RS".
+9. INDICAÇÕES: "me indica", "qual o melhor", "recomenda" → "pedeIndicao":true
+10. LANDAU (carro antigo): "landau", "e o landau", "quero um landau" → ["concessionaria"] ou ["carro antigo"]. Não é piada automática.
+
+Responda APENAS COM JSON válido em UMA única linha:
+{"termos":["termo1"],"cidade":"cidade ou null","pedeIndicao":false,"piada":false,"respostaPiada":null}
 
 Exemplos:
-"quero pizza hoje" -> {"termos":["pizzaria"],"cidade":"Sarandi - RS","pedeIndicao":false}
-"onde compro um chapeu ou bota por aqui?" -> {"termos":["loja de roupas","calcados"],"cidade":"Sarandi - RS","pedeIndicao":false}
-"trator pra comprar" -> {"termos":["concessionaria"],"cidade":"Sarandi - RS","pedeIndicao":false}
-"preciso de remédio em sarandi" -> {"termos":["farmacia"],"cidade":"Sarandi - RS","pedeIndicao":false}
-"qual o melhor mercado por aqui?" -> {"termos":["mercado"],"cidade":"Sarandi - RS","pedeIndicao":true}
-"quero uma churrascaria vegana" -> {"termos":[],"cidade":null,"pedeIndicao":false,"piada":true,"respostaPiada":"Churrascaria vegana? Essa é boa! Acho que o churrasqueiro ia rodar um espeto de alface! Hahaha 🌱 Olha, por aqui ainda não temos essa raridade, mas se quiser outra culinária é só pedir!"}
-
+"quero pizza" -> {"termos":["pizzaria"],"cidade":"Sarandi - RS","pedeIndicao":false,"piada":false,"respostaPiada":null}
+"quero encher a cara" -> {"termos":["bar"],"cidade":"Sarandi - RS","pedeIndicao":false,"piada":false,"respostaPiada":null}
+"qual o sentido da vida?" -> {"termos":[],"cidade":null,"pedeIndicao":false,"piada":false,"respostaPiada":null}
+"onde fica?" -> {"termos":[],"cidade":null,"pedeIndicao":false,"piada":false,"respostaPiada":null}
+"e o landau?" -> {"termos":["concessionaria"],"cidade":"Sarandi - RS","pedeIndicao":false,"piada":false,"respostaPiada":null}
+"barbearia para careca" -> {"termos":[],"cidade":null,"pedeIndicao":false,"piada":true,"respostaPiada":"Barbearia para careca? Eles só vendem cera para polir a cabeça! 😂 Mas se quiser aparar a barba, me avisa!"}
+"preciso de remédio" -> {"termos":["farmacia"],"cidade":"Sarandi - RS","pedeIndicao":false,"piada":false,"respostaPiada":null}
+"onde compro chapeu ou bota?" -> {"termos":["loja de roupas","calcados"],"cidade":"Sarandi - RS","pedeIndicao":false,"piada":false,"respostaPiada":null}
+"qual o melhor mercado?" -> {"termos":["mercado"],"cidade":"Sarandi - RS","pedeIndicao":true,"piada":false,"respostaPiada":null}
+"quero comer" -> {"termos":[],"cidade":null,"pedeIndicao":false,"piada":false,"respostaPiada":null}
+"estou com fome" -> {"termos":[],"cidade":null,"pedeIndicao":false,"piada":false,"respostaPiada":null}
+"quero comer alguma coisa" -> {"termos":[],"cidade":null,"pedeIndicao":false,"piada":false,"respostaPiada":null}
+"quero comer um xis" -> {"termos":["lanchonete"],"cidade":"Sarandi - RS","pedeIndicao":false,"piada":false,"respostaPiada":null}
+"quero comer um x" -> {"termos":["lanchonete"],"cidade":"Sarandi - RS","pedeIndicao":false,"piada":false,"respostaPiada":null}
+"roupa de criança" -> {"termos":["roupa infantil"],"cidade":"Sarandi - RS","pedeIndicao":false,"piada":false,"respostaPiada":null}
+"roupa de crianca" -> {"termos":["roupa infantil"],"cidade":"Sarandi - RS","pedeIndicao":false,"piada":false,"respostaPiada":null}
+"roupa de bebe" -> {"termos":["roupa infantil"],"cidade":"Sarandi - RS","pedeIndicao":false,"piada":false,"respostaPiada":null}
+"roupa de bebê" -> {"termos":["roupa infantil"],"cidade":"Sarandi - RS","pedeIndicao":false,"piada":false,"respostaPiada":null}
 CRITICAL: Responda APENAS com o JSON puro em UMA linha, sem quebras de linha, sem marcacao de codigo, sem nenhuma formatação extra.` }]
                 },
                 contents: [
@@ -94,10 +106,23 @@ CRITICAL: Responda APENAS com o JSON puro em UMA linha, sem quebras de linha, se
         let texto = resposta.data?.candidates?.[0]?.content?.parts?.[0]?.text;
         console.log("RAW IA:", texto);
 
-        if (!texto) return { termos: [], cidade: null };
+        if (!texto) return { conversa: true, termos: [], cidade: null };
 
         texto = texto.replace(/```json/g, '').replace(/```/g, '').trim();
-        const parsed = JSON.parse(texto);
+
+        // Verifica se o retorno é JSON válido antes de fazer parse
+        if (!texto.startsWith('{')) {
+            console.log("⚠️ IA retornou texto livre em vez de JSON. Tratando como conversa.");
+            return { conversa: true, termos: [], cidade: null };
+        }
+
+        let parsed;
+        try {
+            parsed = JSON.parse(texto);
+        } catch (e) {
+            console.log('⚠️ JSON inválido da IA, tratando como conversa:', texto);
+            return { conversa: true, termos: [], cidade: null};
+        }
 
         // 💊 CONTRA-REGRA: Se o usuário digitou farmácia/remédio, impede o falso positivo de drogas
         const textoOriginal = mensagem?.toLowerCase() || "";
@@ -107,22 +132,31 @@ CRITICAL: Responda APENAS com o JSON puro em UMA linha, sem quebras de linha, se
                 parsed.termos = ["farmacia"];
             }
         }
-        
+
+        // 🍺 CONTRA-REGRA: Bebida/bar não é abuso de substância
+        const termosBar = ["encher a cara", "tomar uma", "cerveja", "bebida", "beber", "boteco", "bar"];
+        if (termosBar.some(t => textoOriginal.includes(t))) {
+            if (parsed.termos && parsed.termos.includes("ajuda_saude")) {
+                console.log("🍺 Falso positivo de saúde corrigido para busca de Bar.");
+                parsed.termos = ["bar"];
+            }
+        }
+
         // 1. Substâncias (Acolhimento)
         if (parsed.termos && parsed.termos.includes("ajuda_saude")) {
             console.log("🚨 Alerta de saúde/substâncias acionado.");
-            return { 
+            return {
                 erro: `Olha, eu sou apenas um assistente virtual de buscas locais, mas se você ou alguém que você conhece está passando por momentos difíceis com o uso de substâncias, saiba que existe apoio gratuito e sigiloso disponível. ❤️\n\n` +
-                      `Você pode ligar para o **Viva Voz** pelo número **132** (orientação e apoio sobre drogas) ou procurar o **CAPS (Centro de Atenção Psicossocial)** aqui na região. Se cuida! 🙏✨`
+                      `Você pode ligar para o *Viva Voz* pelo número *132* (orientação e apoio sobre drogas) ou procurar o *CAPS (Centro de Atenção Psicossocial)* aqui na região. Se cuida! 🙏✨`
             };
         }
 
-        // 2. Conteúdo Adulto 
+        // 2. Conteúdo Adulto
         if (parsed.termos && parsed.termos.includes("bloqueado_adulto")) {
             console.log("🛑 Pedido de conteúdo adulto bloqueado.");
-            return { 
+            return {
                 erro: `Opa! 🛑 Eu fui programado para ser um guia local focado estritamente em comércios, lojas e prestadores de serviços de Sarandi - RS.\n\n` +
-                      `Não consigo te ajudar com buscas de conteúdo adulto ou acompanhantes. Se quiser encontrar uma pizzaria, hotel, mercado ou farmácia, estou à disposição! 🧭`
+                    `Não consigo te ajudar com buscas de conteúdo adulto ou acompanhantes. Se quiser encontrar uma pizzaria, hotel, mercado ou farmácia, estou à disposição! 🧭`
             };
         }
 
@@ -140,7 +174,7 @@ CRITICAL: Responda APENAS com o JSON puro em UMA linha, sem quebras de linha, se
 
     } catch (err) {
         console.log("erro extrairIntencao", err.message);
-        return { termos: [], cidade: null };
+        return { conversa: true, termos: [], cidade: null };
     }
 }
 
@@ -154,7 +188,7 @@ async function conversarComIA(mensagem, historico, nomeUsuario, cidadeUsuario, u
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
             {
                 systemInstruction: {
-                    parts: [{ text: `Você é o Jayci, assistente virtual animado e jovial da JCI Sarandi! 🎉
+                    parts: [{ text: `Você é a Nath, assistente virtual animado e jovial da JCI Sarandi! 🎉
 Horário atual: ${new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })} (horário de Brasília).
 
 Informações do usuário:
@@ -166,13 +200,15 @@ COMO VOCÊ É:
 - Animado, divertido e cheio de energia 🚀
 - Fala como um amigo jovem, usa gírias leves
 - Usa bastante emojis em todas as respostas
-- Tem senso de humor e faz piadas ou tira sarro saudável quando o usuário brinca (ex: barbearia para carecas)
+- Tem senso de humor e faz piadas ou tira sarro saudável quando o usuário brinca
 
 COMO VOCÊ AJUDA:
-- Quando souber o que o usuário quer, diga: "Digite [nome do lugar] que eu busco pra você! 🔍"
+- Quando souber o que o usuário quer, diga: "Me manda [nome do lugar] por texto ou áudio que eu busco pra você! 🔍"
 - Se mencionar farmácia, remédio ou dor: "Digite farmácia que eu busco pra você! 💊"
 - Se mencionar fome ou comida: APENAS pergunte o que quer comer. NUNCA sugira nomes de alimentos, categorias ou lugares.
 - Se mencionar posto ou combustível: "Digite posto que eu busco pra você! ⛽"
+- RECUPERAÇÃO: Se o usuário parecer confuso, responder algo inesperado ou fora de contexto, ofereça exemplos: "Posso te ajudar a encontrar: 🛒 Mercado | 🍕 Pizza | 💊 Farmácia | ⛽ Posto | 💈 Barbearia e muito mais! É só pedir! 😊"
+- NUNCA encerre a conversa. Sempre deixe a porta aberta para uma nova busca.
 - NUNCA invente nomes de lugares ou endereços reais
 - NUNCA use asteriscos, underlines ou qualquer formatação markdown na resposta
 
@@ -216,25 +252,34 @@ async function responderComRAG(mensagem, historico, empresas, nomeUsuario, cidad
 
         let lista = '';
 
-        for (const e of patrocinadores) {
-            const estrelas = e.estrelas ? '⭐'.repeat(e.estrelas) + ' ' : '';
-            lista += `💎 ${estrelas}${e.nome}\n`;
-            lista += `📞 ${e.telefone || 'não informado'}\n`;
-            lista += `📍 ${e.endereco || 'Sarandi'}\n`;
-            if (e.horario && e.horario !== 'Fechado') lista += `🕐 Horário: ${e.horario}\n`;
-            lista += e.aberto ? `🟢 Aberto agora\n` : `🔴 Fechado no momento\n`;
-            lista += `➖➖➖➖➖➖➖➖\n\n`;
+        // 🌟 PARCEIROS RECOMENDADOS (Estilo 1)
+        if (patrocinadores.length > 0) {
+            lista += "🌟 *PARCEIROS RECOMENDADOS*\n\n";
+            for (const e of patrocinadores) {
+                const estrelas = e.estrelas ? '⭐'.repeat(e.estrelas) + ' ' : '';
+                lista += `🏢 *${e.nome}*\n`;
+            if (e.telefone && e.telefone !== 'não informado') {
+                const numeroLimpo = e.telefone.replace(/\D/g, '');
+                const mensagem = encodeURIComponent('Ola, Vim pelo bot da Nath - JCI Sarandi!');
+                lista += `📞 ${e.telefone}\n`;
+                lista += `💬 wa.me/55${numeroLimpo}?text=${mensagem}\n`;
+}
+                lista += `📍 ${(e.endereco || 'Sarandi').replace(/,?\s*\d{5}-\d{3},?\s*/g, '').replace(/,?\s*Brasil\s*$/i, '').trim()}\n`;
+                lista += e.aberto ? `🟢 Aberto agora\n` : `🔴 Fechado no momento\n`;
+                lista += `\n`; // Linha em branco para separar os parceiros
+            }
+            lista += `\n`; // Espaço extra antes de começar o mapa
         }
 
+        // 🔍 OUTRAS OPÇÕES NO MAPA (Estilo 1)
         if (demais.length > 0) {
-            lista += `➖➖ Outras opções do Mapa ➖➖\n\n`;
+            lista += "🔍 *OUTRAS OPÇÕES NO MAPA*\n\n";
             for (const e of demais) {
-                lista += `📌 ${e.nome}\n`;
-                lista += `📞 ${e.telefone || 'não informado'}\n`;
-                lista += `📍 ${e.endereco || 'Sarandi'}\n`;
-                if (e.horario && e.horario !== 'Fechado') lista += `🕐 Horário: ${e.horario}\n`;
+                lista += `📍 *${e.nome}*\n`;
+                lista += `📍 ${(e.endereco || 'Sarandi').replace(/,?\s*\d{5}-\d{3},?\s*/g, '').replace(/,?\s*Brasil\s*$/i, '').trim()}\n`;
+                lista += `🏢 ${e.endereco || 'Sarandi'}\n`;
                 lista += e.aberto ? `🟢 Aberto agora\n` : `🔴 Fechado no momento\n`;
-                lista += `➖➖➖➖➖➖➖➖➖\n\n`;
+                lista += `\n`; // Linha em branco para separar os locais
             }
         }
 
@@ -246,9 +291,16 @@ async function responderComRAG(mensagem, historico, empresas, nomeUsuario, cidad
                 `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
                 {
                     systemInstruction: {
-                        parts: [{ text: `Você é o Jayci, assistente animado da JCI Sarandi! 🎉
-Gere APENAS uma frase curtíssima (máximo 10 palavras) de abertura animada e uma frase curtíssima de encerramento.
-Use emojis. Seja criativo e varie sempre. Nunca repita a mesma frase.
+                        parts: [{ text: `Você é a Nath, assistente jovial e descontraída da JCI Sarandi! 🎉
+Fale como um amigo jovem, use gírias leves e emojis.
+Se o usuário falar gírias, fale com ele do mesmo jeito.
+Gere APENAS uma frase curta de abertura animada e uma frase curta de encerramento relacionadas ao tema buscado.
+Exemplos de bom tom:
+ABERTURA: Achei uns postos maneiros pra você abastecer! ⛽🔥
+ABERTURA: Ó os restaurantes que tô te mandando! 🍽️😋
+ABERTURA: Farmácias fresquinhas pra te salvar! 💊✨
+ENCERRAMENTO: Qualquer coisa é só chamar, tô aqui! 🚀
+ENCERRAMENTO: Se precisar de mais, me manda mensagem! 😊
 NUNCA use asteriscos ou markdown.
 Responda EXATAMENTE neste formato em uma única linha cada:
 ABERTURA: [frase]
@@ -260,21 +312,26 @@ ENCERRAMENTO: [frase]` }]
                     }],
                     generationConfig: {
                         temperature: 0.9,
-                        maxOutputTokens: 60
+                        maxOutputTokens: 500,
+                        thinkingConfig: {
+                            thinkingBudget: 0
+                        }
                     }
                 },
                 { headers: { 'Content-Type': 'application/json' } }
             );
 
             const textoGemini = respostaGemini.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            console.log('🎨 Gemini abertura/encerramento:', textoGemini);
             const linhas = textoGemini.split('\n').map(l => l.trim()).filter(Boolean);
             const aberturaLinha = linhas.find(l => l.startsWith('ABERTURA:'));
-            const encerramentoLinha = linhas.find(l => l.startsWith('ENCERRAMENTO:')); // Fixo: alterado de "lines" para "linhas"
+            const encerramentoLinha = linhas.find(l => l.startsWith('ENCERRAMENTO:'));
             abertura = aberturaLinha?.replace('ABERTURA:', '').trim() || '🔍 Encontrei essas opções pra você!';
             encerramento = encerramentoLinha?.replace('ENCERRAMENTO:', '').trim() || 'Se precisar de mais alguma coisa é só chamar! 🚀';
         }
 
-        return `${abertura}\n\n${lista}${encerramento}`;
+        const disclaimer = `💡 _Horários e telefones fornecidos pelo mapa podem sofrer alterações._`;
+        return `${abertura}\n\n${lista}${encerramento}\n\n${disclaimer}`;
 
     } catch (err) {
         console.log('Erro RAG:', err.message);
@@ -282,16 +339,60 @@ ENCERRAMENTO: [frase]` }]
     }
 }
 
-async function processarMensagem(telefone, mensagem) {
+async function transcreverAudio(base64Audio, mimeType = 'audio/ogg') {
+    try {
+        const mimeClean = mimeType.split(';')[0].trim();
+
+        const resposta = await axios.post(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+            {
+                contents: [{
+                    parts: [
+                        {
+                            inlineData: {
+                                mimeType: mimeClean,
+                                data: base64Audio
+                            }
+                        },
+                        {
+                            text: 'Transcreva exatamente o que foi dito neste áudio em português brasileiro. Retorne APENAS a transcrição, sem comentários, sem aspas, sem formatação.'
+                        }
+                    ]
+                }],
+                generationConfig: {
+                    temperature: 0.1,
+                    maxOutputTokens: 500
+                }
+            },
+            { headers: { 'Content-Type': 'application/json' } }
+        );
+
+        const texto = resposta.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        return texto?.trim() || null;
+    } catch (err) {
+        console.log('Erro transcreverAudio:', err.message);
+        return null;
+    }
+}
+
+async function processarMensagem(telefone, mensagem, viaAudio = false) {
     const texto = String(mensagem).toLowerCase().trim();
 
-    // 🩹 TRAVA DE SEGURANÇA MÁXIMA PARA FARMÁCIA (Evita falso positivo no filtro de 'droga')
+    // 🩹 TRAVA DE SEGURANÇA MÁXIMA PARA FARMÁCIA
     const ehBuscaDeFarmacia = texto.includes('farmacia') || texto.includes('farmácia') || texto.includes('remedio') || texto.includes('remédio') || texto.includes('drogaria');
 
-    // 1. Filtros manuais básicos de segurança antes da IA (Só rodam se NÃO for farmácia)
+    const ehEmergenciaFisica = [
+    'quebrei a perna', 'quebrei o braco', 'quebrei o braço',
+    'torci o tornozelo', 'me machuquei', 'estou sangrando',
+    'caí', 'cai e machuquei', 'preciso de socorro',
+    'acidente', 'me cortei', 'dor forte', 'desmaiou',
+    'infarto', 'derrame', 'nao consigo respirar', 'não consigo respirar'
+    ].some(t => texto.includes(t));
+
+    // 1. Filtros manuais básicos de segurança antes da IA
     if (!ehBuscaDeFarmacia) {
         const termosIlegais = ['droga', 'cocaina', 'cocaína', 'maconha', 'crack', 'heroina', 'heroína', 'traficante', 'arma', 'pistola', 'revolver', 'fuzil', 'explosivo', 'assassino', 'matar'];
-        const termosAdultos = ['prostituta', 'prostituição', 'programa', 'michê', 'garota de programa', 'garoto de programa', 'acompanhante', 'puteiro', 'bordel', 'sexo pago'];
+        const termosAdultos = ['prostituta', 'prostituição', 'michê', 'garota de programa', 'garoto de programa', 'puteiro', 'bordel', 'sexo pago'];
 
         if (termosIlegais.some(t => texto.includes(t))) {
             const resposta = `Opa, esse tipo de coisa não posso te ajudar a encontrar! 😅\n\nSe você ou alguém que você conhece estiver passando por um momento difícil, o Viva Voz orienta anonimamente pelo telefone *132* ou o CAPS oferece atendimento gratuito aqui na região! 💙\n\nSe quiser buscar outra coisa em Sarandi, é só me dizer! 🔍`;
@@ -308,7 +409,7 @@ async function processarMensagem(telefone, mensagem) {
 
     // 2. Verificação de localização por GPS
     if (mensagem.startsWith('__localizacao__')) {
-        const coords = mensagem.replace('__localizacao__', '').split(','); // Fixo: alterado de "message" para "mensagem"
+        const coords = mensagem.replace('__localizacao__', '').split(',');
         const lat = parseFloat(coords[0]);
         const lon = parseFloat(coords[1]);
 
@@ -353,11 +454,15 @@ async function processarMensagem(telefone, mensagem) {
     // 3. Fluxo de Onboarding (Novo usuário / Cadastro)
     const usuarioExistente = await buscarUsuario(telefone);
 
-    if (!usuarioExistente && !estadoOnboarding[telefone]) {
-        estadoOnboarding[telefone] = { passo: 'aguardando_nome' };
-        const resposta = `Eaí! 👋🤩 Eu sou a Jeicy, Assistente Virtual da JCI Sarandi!\n\nAntes de começar, me conta: qual é o seu nome? 😊\n\nCaso não queira se identificar, é só digitar *pular* que a gente segue assim mesmo!`;
-        await salvarHistorico(telefone, resposta, 'bot');
-        return resposta;
+        if (!usuarioExistente && !estadoOnboarding[telefone]) {
+            if (viaAudio) {
+                await salvarUsuario(telefone, 'Visitante', 'Sarandi');
+            } else {
+            estadoOnboarding[telefone] = { passo: 'aguardando_nome' };
+            const resposta = `Eaí! 👋🤩 Eu sou a Nath, Assistente Virtual da JCI Sarandi!\n\nAntes de começar, me conta: qual é o seu nome? 😊\n\nCaso não queira se identificar, é só digitar *pular* que a gente segue assim mesmo!`;
+            await salvarHistorico(telefone, resposta, 'bot');
+            return resposta;
+            }
     }
 
     if (estadoOnboarding[telefone]?.passo === 'aguardando_nome') {
@@ -380,8 +485,9 @@ async function processarMensagem(telefone, mensagem) {
         const confirmou = ['sim', 's', 'yes', 'claro', 'isso', 'é', 'sou', 'confirmo', 'yep', 'com certeza'].some(p => respostaUsuario.includes(p));
 
         if (!confirmou) {
-            delete estadoOnboarding[telefone];
-            const resposta = `Que pena${nome !== 'Visitante' ? `, ${nome}` : ''}! 😕 Por enquanto nossa cobertura atende apenas Sarandi, RS. Em breve expandimos pra mais cidades! 🚀`;
+            // Ao invés de encerrar, pede a cidade
+            estadoOnboarding[telefone] = { passo: 'aguardando_cidade_alternativa', nome };
+            const resposta = `Sem problema${nome !== 'Visitante' ? `, ${nome}` : ''}! 😊 De qual cidade você é? 🏙️\n\nPor enquanto foco principalmente em Sarandi - RS, mas posso tentar te ajudar mesmo assim!`;
             await salvarHistorico(telefone, resposta, 'bot');
             return resposta;
         }
@@ -394,8 +500,22 @@ async function processarMensagem(telefone, mensagem) {
         return resposta;
     }
 
+    if (estadoOnboarding[telefone]?.passo === 'aguardando_cidade_alternativa') {
+        const nome = estadoOnboarding[telefone].nome;
+        const cidadeInformada = mensagem.trim() || 'Não informada';
+
+        await salvarUsuario(telefone, nome, cidadeInformada);
+        delete estadoOnboarding[telefone];
+
+        const resposta = `Anotado! 📝 Vou te ajudar como puder${nome !== 'Visitante' ? `, ${nome}` : ''}! 🚀\n\nMeu foco é Sarandi - RS, mas me diz o que você precisa que eu dou um jeito! 🔍\n\n🛒 Mercado | 🍕 Pizza | 💊 Farmácia | ⛽ Posto`;
+        await salvarHistorico(telefone, resposta, 'bot');
+        return resposta;
+    }
+
+
     const agradecimentos = ['obrigado', 'obrigada', 'valeu', 'vlw', 'brigado', 'thanks', 'grato'];
-    if (agradecimentos.some(a => texto.includes(a))) {
+    
+    if (Array.isArray(agradecimentos) && agradecimentos.some(a => texto.includes(a))) {
         return 'De nada! 😄🙌 Se precisar de mais alguma coisa é só chamar! 🚀';
     }
 
@@ -410,27 +530,30 @@ async function processarMensagem(telefone, mensagem) {
     const historico = await buscarHistorico(telefone);
     const ultimasPesquisas = await buscarUltimasPesquisas(telefone);
 
-    // 4. Chamada de Intenção (Com a nossa trava de ignorar IA para farmácia mantida!)
+    // 4. Chamada de Intenção
     let intent;
     if (ehBuscaDeFarmacia) {
-        console.log("💊 Busca direta por farmácia/remédio detectada. Ignorando filtros de segurança.");
+        console.log("💊 Busca direta por farmácia/remédio detectada.");
         intent = {
             termos: ["farmacia"],
             cidade: "Sarandi - RS",
-            pedeIndicao: false,
-            piada: false
+            pedeIndicacao: false,
+            piada: false,
+        };
+    } else if (ehEmergenciaFisica) {
+        console.log("🚨 Emergência física detectada. Buscando hospital automaticamente");
+        intent = {
+            termos: ["hospital"],
+            cidade: "Sarandi - RS",
+            pedeIndicacao: false,
+            piada: false,
         };
     } else {
-        intent = await extrairIntencao(mensagem, historico);
+        intent = await extrairIntencao(mensagem,historico);
     }
 
-    if (intent.erro) {
-        await salvarHistorico(telefone, intent.erro, 'bot');
-        return intent.erro;
-    }
     if (intent.piada && (!intent.termos || intent.termos.length === 0)) {
         console.log("🎭 Piada sem termos reais detectada. Respondendo direto.");
-        
         const textoPiada = intent.respostaPiada || "Hahaha, essa é boa! Mas por enquanto não encontrei essa opção por aqui. 😅";
         await salvarHistorico(telefone, textoPiada, 'bot');
         return textoPiada;
@@ -493,6 +616,13 @@ async function processarMensagem(telefone, mensagem) {
                 resultados = [...pats.map(p => ({ ...p, patrocinador: true })), ...emps];
             }
 
+            const nomesVistos = new Set();
+            resultados = resultados.filter(r => {
+                const nomeLower = r.nome.toLowerCase();
+                if (nomesVistos.has(nomeLower)) return false;
+                nomesVistos.add(nomeLower);
+                return true;
+            });
             if (resultados.length > 0) {
                 const rag = await responderComRAG(mensagem, [], resultados, nomeUsuario, cidadePadrao);
                 if (rag) respostaFinal.push(rag);
@@ -506,9 +636,40 @@ async function processarMensagem(telefone, mensagem) {
     }
 
     // 7. Fluxo de Pedido Único
-    const termoBusca = intent.termos[0];
+
+    const normalizacaoTermos = {
+    'loja de roupas de criança': 'roupa infantil',
+    'loja de roupas infantil': 'roupa infantil',
+    'roupa de criança': 'roupa infantil',
+    'roupa de bebe': 'roupa infantil',
+    'roupa de bebê': 'roupa infantil',
+    'loja infantil': 'roupa infantil',
+    'loja de roupas masculina': 'roupa masculina',
+    'loja de roupas feminina': 'roupa feminina',
+    'loja de roupas': 'loja de roupas',
+    'xis': 'lanchonete hamburgueria',
+    'quero um xis': 'lanchonete hamburgueria',
+    'comer um xis': 'lanchonete hamburgueria',
+    'hamburguer': 'hamburgueria',
+    'burger': 'hamburgueria',
+    'hot dog': 'cachorro quente',
+    'cachorro quente': 'lanchonete',
+    'xis': 'lanchonete',
+    'x burguer': 'lanchonete',
+    'quero um x': 'lanchonete',
+    'comer um x': 'lanchonete',
+    'fast food': 'lanchonete',
+    'escritorio contabil': 'contabilidade',
+    'escritório contábil': 'contabilidade',
+    'escritorio de contabilidade': 'contabilidade',
+    'escritório de contabilidade': 'contabilidade',
+    'posto de gasolina': 'posto',
+    'posto de combustivel': 'posto',
+    'posto de combustível': 'posto',
+    };
+    const termoBusca = normalizacaoTermos[intent.termos[0]?.toLowerCase()] || intent.termos[0];
     ultimaBusca[telefone] = termoBusca;
-    
+
     const cidadeFinal = intent.cidade ? intent.cidade : cidadePadrao;
 
     console.log('🧠 TERMO BUSCA:', termoBusca);
@@ -518,16 +679,12 @@ async function processarMensagem(telefone, mensagem) {
 
     const patrocinadores = await buscarPatrocinadores(termoBusca, cidadeFinal);
     console.log('⭐ PATROCINADORES:', patrocinadores.length);
-        
-    // Configuração do texto de introdução (Piadas, Indicações ou Padrão)
+
+    // Configuração do texto de introdução (Mapeia piadas ou interações antes)
     let mensagemIntroducao = "";
-    
+
     if (intent.piada && intent.respostaPiada) {
         mensagemIntroducao = `${intent.respostaPiada}\n\n`;
-    } else if (intent.pedeIndicao && patrocinadores.length > 0) {
-        mensagemIntroducao = `Com certeza! 🌟 Separei aqui as minhas melhores indicações em Sarandi para você: \n\n`;
-    } else if (intent.pedeIndicao) {
-        mensagemIntroducao = `Olha, não tenho nenhum parceiro exclusivo para te indicar de olhos fechados, mas encontrei essas opções no mapa: \n\n`;
     }
 
     for (const p of patrocinadores) {
@@ -540,74 +697,35 @@ async function processarMensagem(telefone, mensagem) {
         }
     }
 
-    let textoFinal = mensagemIntroducao || ""; 
-
-    if (patrocinadores.length > 0) {
-        textoFinal += `✨ *Destaques Recomendados:* \n`;
-        for (const p of patrocinadores) {
-            textoFinal += `⭐ *${p.nome}*\n📍 ${p.endereco}\n📞 ${p.telefone}\n🕒 ${p.horario}\n\n`;
-        }
-    }
-
     const empresas = await buscarEmpresas(termoBusca, cidadeFinal);
     console.log('🏪 EMPRESAS SUBAPASE:', empresas?.length || 0);
 
+    let resultadosMapa = [];
+
     if (!empresas || empresas.length === 0) {
         console.log('⚠️ Nada no Supabase, buscando no Google Places...');
-        
         const osm = await buscarOSM(termoBusca, cidadeFinal, localizacao);
 
-        if (osm && osm.foraDeCobertura) {
+        if(osm && osm.foraDeCobertura) {
             console.log(`🧭 Cidade fora de cobertura detectada: ${osm.cidadeTentada}`);
-            const respostaFora = `Bah, tchê! 🧭 Olhei aqui no mapa e vi que você buscou algo em *${osm.cidadeTentada}*. 🗺️\n\nPor enquanto o meu sistema opera EXCLUSIVAMENTE em Sarandi - RS! 🥹 Segura a ansiedade que logo logo a gente expande fronteiras! 🚀🛑`;
+            const respostaFora = `Bah, tchê! 🧭 Olhei aqui no mapa e vi que você buscou algo em *${osm.cidadeTentada}*. 🗺️\n\nPor enquanto o meu sistema opera EXCLUSIVAMENTE em Sarandi - RS! 🥹`;
             await salvarHistorico(telefone, respostaFora, 'bot');
             return respostaFora;
         }
-
         if (osm?.erro) return osm.erro;
-
-        if (!osm || osm.length === 0) {
-            const respostaVazia = `❌ Não encontrei nada de "${termoBusca}" em *${cidadeFinal}*.`;
-            await salvarHistorico(telefone, respostaVazia, 'bot');
-            return respostaVazia;
-        }
-
-        const nomesPatrocinadores = patrocinadores.map(p => p.nome.toLowerCase());
-        const osmFiltrado = osm.filter(o => {
-            const nomeOSM = o.nome.toLowerCase();
-            return !nomesPatrocinadores.some(n => nomeOSM === n || nomeOSM.includes(n) || n.includes(nomeOSM));
-        });
-
-        const todosOSM = [...patrocinadores.map(p => ({
-            ...p,
-            aberto: true,
-            patrocinador: true
-        })), ...osmFiltrado];
-
-        ultimosResultados[telefone] = todosOSM.map(e => e.nome).join(',');
-        
-        const respostaRAG = await responderComRAG(mensagem, [], todosOSM, nomeUsuario, cidadeFinal, mensagemIntroducao);
-
-        if (respostaRAG) {
-            await salvarHistorico(telefone, respostaRAG, 'bot');
-            return respostaRAG;
-        }
-
-        let respostaOSM = textoFinal + '🌍 Encontrei isso aqui:\n\n';
-        osmFiltrado.forEach(e => {
-            respostaOSM += `📍 ${e.nome}\n📞 ${e.telefone || 'não informado'}\n📌 ${e.endereco}\n\n`;
-        });
-        await salvarHistorico(telefone, respostaOSM, 'bot');
-        return respostaOSM;
+        if (osm) resultadosMapa = osm;
+    } else {
+        resultadosMapa = empresas;
     }
 
-    const todosResultados = [...patrocinadores.map(p => ({
-        ...p,
-        aberto: true,
-        patrocinador: true
-    })), ...(empresas || [])];
-    
+const todosResultados = [
+    ...patrocinadores.map(p => ({ ...p, aberto: true, patrocinador: true })), 
+    ...(resultadosMapa || [])
+];
+
     ultimosResultados[telefone] = todosResultados.map(e => e.nome).join(',');
+    
+    // Chama o novo formato minimalista que criamos
     const respostaRAG = await responderComRAG(termoBusca, [], todosResultados, nomeUsuario, cidadeFinal, mensagemIntroducao);
 
     if (respostaRAG) {
@@ -615,14 +733,24 @@ async function processarMensagem(telefone, mensagem) {
         return respostaRAG;
     }
 
-    let respostaFinal = textoFinal + '🏢 Achei isso pra você:\n\n';
-    empresas.forEach(e => {
+    // Código de segurança caso o RAG falhe por algum motivo
+    let respostaFallback = (mensagemIntroducao || "") + '🏢 Achei isso pra você:\n\n';
+    todosResultados.forEach(e => {
         const destaque = e.patrocinador ? '⭐ ' : '';
-        respostaFinal += `${destaque}${e.nome} - ${e.telefone || 'Sem fone'} - ${e.endereco || 'Sarandi'}\n`;
+        respostaFallback += `${destaque}${e.nome} - ${e.telefone || 'Sem fone'} - ${e.endereco || 'Sarandi'}\n`;
     });
 
-    await salvarHistorico(telefone, respostaFinal, 'bot');
-    return respostaFinal;
-}
+    await salvarHistorico(telefone, respostaFallback, 'bot');
+    return respostaFallback;
 
-module.exports = { processarMensagem };
+} 
+
+// Agora o module.exports fica isolado do lado de fora:
+module.exports = { 
+    extrairIntencao, 
+    conversarComIA, 
+    responderComRAG, 
+    transcreverAudio, 
+    processarMensagem 
+    
+};
