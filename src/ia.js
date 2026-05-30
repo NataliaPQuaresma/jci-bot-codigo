@@ -277,7 +277,6 @@ async function responderComRAG(mensagem, historico, empresas, nomeUsuario, cidad
             for (const e of demais) {
                 lista += `📍 *${e.nome}*\n`;
                 lista += `📍 ${(e.endereco || 'Sarandi').replace(/,?\s*\d{5}-\d{3},?\s*/g, '').replace(/,?\s*Brasil\s*$/i, '').trim()}\n`;
-                lista += `🏢 ${e.endereco || 'Sarandi'}\n`;
                 lista += e.aberto ? `🟢 Aberto agora\n` : `🔴 Fechado no momento\n`;
                 lista += `\n`; // Linha em branco para separar os locais
             }
