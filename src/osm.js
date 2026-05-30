@@ -110,7 +110,7 @@ const CATEGORIAS = {
 };
 
 const COORDS_CIDADES = {
-    'sarandi': { lat: -27.9408, lon: -52.9228 },
+    'sarandi': { lat: -27.9378, lon: -52.9167 },
 };
 
 const palavrasAnimal = ['pet', 'animal', 'veterinár', 'veterinar', 'agropecuária', 'agropecuaria'];
