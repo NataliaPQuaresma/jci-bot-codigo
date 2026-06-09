@@ -1,12 +1,4 @@
-const path = require('path');
-const fs = require('fs');
-const envPath = path.resolve(__dirname, '../.env');
-const envContent = fs.readFileSync(envPath, 'utf8');
-
-envContent.split('\n').forEach(line => {
-    const [key, ...rest] = line.split('=');
-    if (key && rest.length) process.env[key.trim()] = rest.join('=').trim();
-});
+require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 
 const axios = require('axios');
 const {

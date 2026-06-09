@@ -13,7 +13,7 @@ async function buscarEmpresas(categoria, cidade) {
     const cidadeFinal = cidade || 'Sarandi';
     
     // Remove pontuação que quebra o banco
-    const categoriaLimpa = categoria.replace(/[,()]/g, ''); 
+    const categoriaLimpa = categoria.replace(/[%_(),'\\]/g, ''); 
     const categoriaNorm = removerAcentos(categoriaLimpa);
 
     const { data, error } = await supabase
