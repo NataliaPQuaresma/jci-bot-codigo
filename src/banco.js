@@ -68,7 +68,7 @@ async function buscarPatrocinadores(termoBusca, cidade) {
         .trim();
 
     // Remove pontuação do termo de busca
-    const termoLimpo = termoBusca.replace(/[,()]/g, '');
+    const termoLimpo = termoBusca.replace(/[%_(),'\\]/g, '');
     const termoNorm = removerAcentos(termoLimpo);
 
     const queryOr = `nome.ilike.%${termoLimpo}%,categoria.ilike.%${termoLimpo}%,nome.ilike.%${termoNorm}%,categoria.ilike.%${termoNorm}%`;
