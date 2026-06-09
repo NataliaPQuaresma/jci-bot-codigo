@@ -24,10 +24,11 @@ function iniciarBot() {
         if (msg.fromMe || msg.isGroupMsg) return;
 
         const telefone = msg.from;
-        if (!telefone || !telefone.match(/^\d+@c\.us$/)) {
-            console.log('⚠️ Telefone inválido ignorado:', telefone);
+        if (!telefone) {
+            console.log('⚠️ Telefone vazio ignorado');
             return;
-}
+    }
+    console.log('📞 Formato do telefone:', telefone);
 
         // Cria uma execução isolada em background para esta mensagem específica
         (async () => {
