@@ -23,6 +23,12 @@ function iniciarBot() {
         // Ignora mensagens enviadas pelo próprio bot ou grupos
         if (msg.fromMe || msg.isGroupMsg) return;
 
+        const telefone = msg.from;
+        if (!telefone || !telefone.match(/^\d+@c\.us$/)) {
+            console.log('⚠️ Telefone inválido ignorado:', telefone);
+            return;
+}
+
         // Cria uma execução isolada em background para esta mensagem específica
         (async () => {
             try {
